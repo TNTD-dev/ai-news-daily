@@ -1,0 +1,38 @@
+[project]
+name = "ai-news-daily"
+version = "0.1.0"
+description = "AI-powered news aggregator that collects, processes, and delivers personalized news content"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openai>=1.0.0",
+    "sqlalchemy>=2.0.0",
+    "feedparser>=6.0.0",
+    "docling>=1.0.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "email-validator>=2.0.0",
+    "youtube-transcript-api>=0.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "isort>=5.12.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["app"]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+]
