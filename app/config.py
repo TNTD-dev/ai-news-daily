@@ -51,21 +51,31 @@ class DatabaseConfig(BaseSettings):
         url: PostgreSQL connection string in format:
             postgresql://[user]:[password]@[host]:[port]/[database]
         echo: Enable SQLAlchemy query logging (useful for debugging)
+        pool_size: Number of connections to maintain in the pool (default: 5)
+        max_overflow: Additional connections beyond pool_size (default: 10)
+        pool_recycle: Recycle connections after this many seconds (default: 3600)
+        pool_timeout: Timeout when getting connection from pool in seconds (default: 30)
     """
 
     model_config: SettingsConfigDict = SettingsConfigDict(
-        env_prefix="", case_sensitive=True
+        env_prefix="",
+        case_sensitive=True,
+        extra="ignore",
     )
 
     url: str = Field(..., alias="DATABASE_URL", description="PostgreSQL connection string")
     echo: bool = Field(default=False, description="SQLAlchemy echo mode")
+    pool_size: int = Field(default=5, alias="DATABASE_POOL_SIZE", description="Connection pool size")
+    max_overflow: int = Field(default=10, alias="DATABASE_MAX_OVERFLOW", description="Maximum overflow connections")
+    pool_recycle: int = Field(default=3600, alias="DATABASE_POOL_RECYCLE", description="Connection recycle time in seconds")
+    pool_timeout: int = Field(default=30, alias="DATABASE_POOL_TIMEOUT", description="Connection pool timeout in seconds")
 
 
 class OpenAIConfig(BaseSettings):
     """
     OpenAI API configuration.
     
-    Environment variables are prefixed with "OPENAI_", so:
+    Environment variables use explicit aliases:
     - OPENAI_API_KEY maps to api_key
     - OPENAI_MODEL maps to model
     
@@ -75,11 +85,13 @@ class OpenAIConfig(BaseSettings):
     """
 
     model_config: SettingsConfigDict = SettingsConfigDict(
-        env_prefix="OPENAI_", case_sensitive=True
+        env_prefix="",
+        case_sensitive=True,
+        extra="ignore",
     )
 
-    api_key: str = Field(..., description="OpenAI API key")
-    model: str = Field(default="gpt-4", description="OpenAI model name")
+    api_key: str = Field(..., alias="OPENAI_API_KEY", description="OpenAI API key")
+    model: str = Field(default="gpt-4", alias="OPENAI_MODEL", description="OpenAI model name")
 
 
 class EmailConfig(BaseSettings):
@@ -99,7 +111,9 @@ class EmailConfig(BaseSettings):
     """
 
     model_config: SettingsConfigDict = SettingsConfigDict(
-        env_prefix="", case_sensitive=True
+        env_prefix="",
+        case_sensitive=True,
+        extra="ignore",
     )
 
     host: str = Field(..., alias="SMTP_HOST", description="SMTP server host")
@@ -140,7 +154,9 @@ class ScrapingConfig(BaseSettings):
     """
 
     model_config: SettingsConfigDict = SettingsConfigDict(
-        env_prefix="", case_sensitive=True
+        env_prefix="",
+        case_sensitive=True,
+        extra="ignore",
     )
 
     hours_lookback: int = Field(

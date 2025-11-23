@@ -9,6 +9,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import os
 import feedparser
 from sqlalchemy.orm import Session
 from youtube_transcript_api import (
@@ -16,6 +17,10 @@ from youtube_transcript_api import (
     NoTranscriptFound,
     YouTubeTranscriptApi,
 )
+try:
+    from youtube_transcript_api.proxies import WebshareProxyConfig
+except ImportError:
+    WebshareProxyConfig = None
 
 from app.config import AppConfig
 from app.database.models import TranscriptStatus, YouTubeVideo
@@ -45,6 +50,19 @@ class YouTubeScraper(BaseScraper):
         """
         super().__init__(session, config)
         self.repository = YouTubeVideoRepository(session)
+        
+        # Initialize YouTubeTranscriptApi instance (theo logic của thầy)
+        proxy_config = None
+        proxy_username = os.getenv("PROXY_USERNAME")
+        proxy_password = os.getenv("PROXY_PASSWORD")
+        
+        if proxy_username and proxy_password and WebshareProxyConfig:
+            proxy_config = WebshareProxyConfig(
+                proxy_username=proxy_username,
+                proxy_password=proxy_password
+            )
+        
+        self.transcript_api = YouTubeTranscriptApi(proxy_config=proxy_config)
 
     def scrape(self) -> dict[str, Any]:
         """
@@ -362,6 +380,8 @@ class YouTubeScraper(BaseScraper):
         """
         Fetch transcript for a video using youtube-transcript-api.
         
+        Sử dụng logic của thầy: tạo instance và dùng fetch() method.
+        
         Args:
             video_id: YouTube video ID
             
@@ -381,12 +401,12 @@ class YouTubeScraper(BaseScraper):
             video.transcript_status = TranscriptStatus.PROCESSING
             self.repository.update(video)
 
-            # Fetch transcript
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            # Fetch transcript using instance method (logic của thầy)
+            transcript = self.transcript_api.fetch(video_id)
             
-            # Combine transcript segments into full text
+            # Combine transcript snippets into full text
             transcript_text = " ".join(
-                segment["text"] for segment in transcript_list
+                snippet.text for snippet in transcript.snippets
             )
 
             # Update video with transcript

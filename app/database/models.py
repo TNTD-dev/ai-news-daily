@@ -341,7 +341,7 @@ digest_youtube_videos = Table(
     Base.metadata,
     Column("digest_id", Integer, ForeignKey("digests.id"), primary_key=True),
     Column("youtube_video_id", Integer, ForeignKey("youtube_videos.id"), primary_key=True),
-    doc="Association table linking digests to YouTube videos",
+    comment="Association table linking digests to YouTube videos",
 )
 
 digest_openai_articles = Table(
@@ -349,7 +349,7 @@ digest_openai_articles = Table(
     Base.metadata,
     Column("digest_id", Integer, ForeignKey("digests.id"), primary_key=True),
     Column("openai_article_id", Integer, ForeignKey("openai_articles.id"), primary_key=True),
-    doc="Association table linking digests to OpenAI articles",
+    comment="Association table linking digests to OpenAI articles",
 )
 
 digest_anthropic_articles = Table(
@@ -357,7 +357,7 @@ digest_anthropic_articles = Table(
     Base.metadata,
     Column("digest_id", Integer, ForeignKey("digests.id"), primary_key=True),
     Column("anthropic_article_id", Integer, ForeignKey("anthropic_articles.id"), primary_key=True),
-    doc="Association table linking digests to Anthropic articles",
+    comment="Association table linking digests to Anthropic articles",
 )
 
 
