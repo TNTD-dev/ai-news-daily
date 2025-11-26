@@ -2,16 +2,20 @@ version: '3.8'
 
 services:
   database:
-    image: postgres:16  # Sử dụng version cụ thể
+    image: postgres:16
     container_name: ai_news_db
     environment:
       POSTGRES_DB: ai_news
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+      # ✅ THÊM DÒNG NÀY
+      TZ: Asia/Ho_Chi_Minh
+      PGTZ: Asia/Ho_Chi_Minh
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # Giữ nguyên
+      - postgres_data:/var/lib/postgresql/data
+     
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s

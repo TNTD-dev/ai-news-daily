@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any, List
 
 from dotenv import load_dotenv
-from pydantic import EmailStr, Field, field_validator
+from pydantic import EmailStr, Field, field_validator, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -169,10 +169,10 @@ class ScrapingConfig(BaseSettings):
         alias="SCRAPING_MAX_ARTICLES",
         description="Maximum number of articles to process",
     )
-    youtube_channels: List[str] = Field(
-        default_factory=list,
+    youtube_channels_raw: str = Field(
+        default="",
         alias="YOUTUBE_CHANNELS",
-        description="List of YouTube channel IDs/URLs",
+        description="Comma-separated YouTube channel IDs/URLs",
     )
 
     @field_validator("hours_lookback", "max_articles")
@@ -194,28 +194,22 @@ class ScrapingConfig(BaseSettings):
             raise ValueError("Value must be a positive integer")
         return v
 
-    @field_validator("youtube_channels", mode="before")
-    @classmethod
-    def parse_youtube_channels(cls, v: str | List[str]) -> List[str]:
+    @computed_field
+    @property
+    def youtube_channels(self) -> List[str]:
         """
         Parse comma-separated YouTube channels string into list.
         
-        This validator runs before type checking, allowing us to convert
-        the environment variable string (e.g., "channel1,channel2,channel3")
-        into a proper list of strings.
-        
-        Args:
-            v: Either a comma-separated string or already a list
-            
         Returns:
             List of channel IDs/URLs with whitespace stripped
         """
-        if isinstance(v, str):
-            # Split by comma and strip whitespace
-            channels = [channel.strip() for channel in v.split(",") if channel.strip()]
-            return channels
-        return v
-
+        if not self.youtube_channels_raw.strip():
+            return []
+        return [
+            channel.strip() 
+            for channel in self.youtube_channels_raw.split(",") 
+            if channel.strip()
+        ]
 
 class AppConfig(BaseSettings):
     """

@@ -271,6 +271,7 @@ class YouTubeScraper(BaseScraper):
         - https://www.youtube.com/watch?v=VIDEO_ID
         - https://youtu.be/VIDEO_ID
         - https://www.youtube.com/embed/VIDEO_ID
+        - https://www.youtube.com/shorts/VIDEO_ID
         
         Args:
             url: YouTube video URL
@@ -282,6 +283,7 @@ class YouTubeScraper(BaseScraper):
             r"(?:v=|\/)([0-9A-Za-z_-]{11}).*",  # Standard watch URL
             r"youtu\.be\/([0-9A-Za-z_-]{11})",  # Short URL
             r"embed\/([0-9A-Za-z_-]{11})",  # Embed URL
+            r"shorts\/([0-9A-Za-z_-]{11})",  # Shorts URL
         ]
 
         for pattern in patterns:
@@ -290,6 +292,63 @@ class YouTubeScraper(BaseScraper):
                 return match.group(1)
 
         return None
+
+    def _is_youtube_short(self, entry: feedparser.FeedParserDict, url: str) -> bool:
+        """
+        Check if a video entry is a YouTube Short.
+        
+        YouTube Shorts are identified by:
+        1. URL containing "/shorts/"
+        2. Duration less than 60 seconds (from RSS feed metadata)
+        
+        Args:
+            entry: RSS feed entry
+            url: Video URL
+            
+        Returns:
+            True if the video is a Short, False otherwise
+        """
+        # Check URL pattern
+        if "/shorts/" in url:
+            return True
+        
+        # Check duration from RSS feed metadata
+        # YouTube RSS feed may have duration in media:group/media:content or yt:duration
+        duration_seconds = None
+        
+        # Try to get duration from media:group/media:content
+        if hasattr(entry, "media_content"):
+            media_content = entry.media_content
+            if isinstance(media_content, list) and len(media_content) > 0:
+                duration_attr = media_content[0].get("duration")
+                if duration_attr:
+                    try:
+                        duration_seconds = int(duration_attr)
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Try to get duration from yt:duration (YouTube namespace)
+        if duration_seconds is None and hasattr(entry, "yt_duration"):
+            try:
+                # yt:duration format is typically "PT1M30S" (ISO 8601 duration)
+                duration_str = entry.yt_duration
+                if duration_str:
+                    # Parse ISO 8601 duration format (PT1M30S = 1 minute 30 seconds)
+                    # Simple regex to extract minutes and seconds
+                    match = re.search(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str)
+                    if match:
+                        hours = int(match.group(1) or 0)
+                        minutes = int(match.group(2) or 0)
+                        seconds = int(match.group(3) or 0)
+                        duration_seconds = hours * 3600 + minutes * 60 + seconds
+            except (ValueError, TypeError, AttributeError):
+                pass
+        
+        # YouTube Shorts are typically 60 seconds or less
+        if duration_seconds is not None and duration_seconds <= 60:
+            return True
+        
+        return False
 
     def _process_video_entry(
         self, entry: feedparser.FeedParserDict, channel_info: dict[str, str]
@@ -305,15 +364,24 @@ class YouTubeScraper(BaseScraper):
             YouTubeVideo instance if successful, None otherwise
         """
         # Extract video ID from link
-        video_id = self._extract_video_id(entry.get("link", ""))
+        url = entry.get("link", "")
+        video_id = self._extract_video_id(url)
         if not video_id:
-            self._log_error("Could not extract video ID from entry", entry_link=entry.get("link"))
+            self._log_error("Could not extract video ID from entry", entry_link=url)
+            return None
+
+        # Skip YouTube Shorts
+        if self._is_youtube_short(entry, url):
+            self._log_info(
+                "Skipping YouTube Short (content not complete)",
+                video_id=video_id,
+                url=url,
+            )
             return None
 
         # Extract metadata
         title = entry.get("title", "Untitled")
         description = entry.get("summary", "")
-        url = entry.get("link", "")
         published_str = entry.get("published", "")
 
         # Parse published date
