@@ -71,17 +71,17 @@ class DatabaseConfig(BaseSettings):
     pool_timeout: int = Field(default=30, alias="DATABASE_POOL_TIMEOUT", description="Connection pool timeout in seconds")
 
 
-class OpenAIConfig(BaseSettings):
+class GeminiConfig(BaseSettings):
     """
-    OpenAI API configuration.
+    Gemini API configuration.
     
     Environment variables use explicit aliases:
-    - OPENAI_API_KEY maps to api_key
-    - OPENAI_MODEL maps to model
+    - GEMINI_API_KEY maps to api_key
+    - GEMINI_MODEL maps to model
     
     Attributes:
-        api_key: Your OpenAI API key (required)
-        model: Model name to use (default: "gpt-4")
+        api_key: Your Gemini API key (required)
+        model: Model name to use (default: "gemini-3-pro")
     """
 
     model_config: SettingsConfigDict = SettingsConfigDict(
@@ -90,8 +90,8 @@ class OpenAIConfig(BaseSettings):
         extra="ignore",
     )
 
-    api_key: str = Field(..., alias="OPENAI_API_KEY", description="OpenAI API key")
-    model: str = Field(default="gpt-4", alias="OPENAI_MODEL", description="OpenAI model name")
+    api_key: str = Field(..., alias="GEMINI_API_KEY", description="Gemini API key")
+    model: str = Field(default="gemini-3-pro", alias="GEMINI_MODEL", description="Gemini model name")
 
 
 class EmailConfig(BaseSettings):
@@ -220,7 +220,7 @@ class AppConfig(BaseSettings):
     automatically reads from environment variables.
     
     Nested Config Initialization:
-        Each nested config (DatabaseConfig, OpenAIConfig, etc.) is a separate
+        Each nested config (DatabaseConfig, GeminiConfig, etc.) is a separate
         BaseSettings instance. This allows each to have its own env_prefix and
         read environment variables independently. The __init__ method ensures:
         
@@ -230,7 +230,7 @@ class AppConfig(BaseSettings):
         
     Attributes:
         database: PostgreSQL database configuration
-        openai: OpenAI API configuration
+        gemini: Gemini API configuration
         email: SMTP email configuration
         scraping: Content scraping parameters
     """
@@ -243,7 +243,7 @@ class AppConfig(BaseSettings):
     )
 
     database: DatabaseConfig
-    openai: OpenAIConfig
+    gemini: GeminiConfig
     email: EmailConfig
     scraping: ScrapingConfig
 
@@ -280,8 +280,8 @@ class AppConfig(BaseSettings):
         # independently, while still allowing override for testing
         if "database" not in kwargs:
             kwargs["database"] = DatabaseConfig()
-        if "openai" not in kwargs:
-            kwargs["openai"] = OpenAIConfig()
+        if "gemini" not in kwargs:
+            kwargs["gemini"] = GeminiConfig()
         if "email" not in kwargs:
             kwargs["email"] = EmailConfig()
         if "scraping" not in kwargs:
