@@ -442,3 +442,77 @@ class Digest(Base, TimestampMixin):
     def __repr__(self) -> str:
         return f"<Digest(id={self.id}, digest_date={self.digest_date}, title='{self.title[:50]}...')>"
 
+
+class UserProfile(Base, TimestampMixin):
+    """
+    Model for storing user profile and personalization settings.
+
+    This model stores user-level preferences that control how content is
+    curated and how digests/emails are personalized.
+
+    Attributes:
+        id: Primary key
+        name: User's display name
+        email: User's email address (unique)
+        preferred_topics: JSON-encoded list of preferred topics (as text)
+        preferred_providers: JSON-encoded list of preferred content providers
+        preferred_formats: JSON-encoded list of preferred content formats
+        expertise_level: User's expertise level ('beginner', 'intermediate', 'expert')
+        receive_daily_digest: Whether the user wants to receive daily digests
+        timezone: Optional IANA timezone string (e.g., 'UTC', 'America/Los_Angeles')
+    """
+
+    __tablename__ = "user_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, doc="Primary key")
+    name: Mapped[str] = mapped_column(
+        String(200), nullable=False, doc="User display name"
+    )
+    email: Mapped[str] = mapped_column(
+        String(320),
+        nullable=False,
+        unique=True,
+        index=True,
+        doc="User email address (unique)",
+    )
+    preferred_topics: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        doc="JSON-encoded list of preferred topics (e.g., ['ai', 'ml'])",
+    )
+    preferred_providers: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        doc="JSON-encoded list of preferred providers (e.g., ['openai', 'google'])",
+    )
+    preferred_formats: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        doc="JSON-encoded list of preferred content formats (e.g., ['video', 'article'])",
+    )
+    expertise_level: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        doc="Expertise level: 'beginner', 'intermediate', or 'expert'",
+    )
+    receive_daily_digest: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        doc="Whether the user wants to receive daily digest emails",
+    )
+    timezone: Mapped[str | None] = mapped_column(
+        String(64),
+        nullable=True,
+        doc="User timezone (IANA string, e.g., 'UTC')",
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "expertise_level in ('beginner', 'intermediate', 'expert')",
+            name="check_user_profile_expertise_level",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserProfile(id={self.id}, email='{self.email}', name='{self.name}')>"

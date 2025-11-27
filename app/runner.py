@@ -72,7 +72,33 @@ def _run_single_scraper(name: str, scraper_cls: Type, session, config: AppConfig
 
 def run_pipeline(config: AppConfig | None = None) -> Dict[str, ScrapeResult]:
     """
-    Execute the full scraping pipeline and return per-scraper results.
+    Execute the scraping pipeline and return per-scraper results.
+    
+    This function runs only the scraping stage (YouTube, OpenAI, Anthropic).
+    For the complete pipeline including digest generation and email delivery,
+    use app.daily_runner.DailyPipelineRunner instead.
+    
+    Args:
+        config: Optional application configuration (uses settings singleton if not provided)
+        
+    Returns:
+        Dictionary mapping scraper names to their results
+    """
+    return run_scraping_only(config)
+
+
+def run_scraping_only(config: AppConfig | None = None) -> Dict[str, ScrapeResult]:
+    """
+    Execute only the scraping stage of the pipeline.
+    
+    This is a helper function that explicitly runs scraping only.
+    The run_pipeline() function calls this internally for backward compatibility.
+    
+    Args:
+        config: Optional application configuration (uses settings singleton if not provided)
+        
+    Returns:
+        Dictionary mapping scraper names to their results
     """
     cfg = config or settings
     pipeline_results: Dict[str, ScrapeResult] = {}
@@ -89,7 +115,7 @@ def run_pipeline(config: AppConfig | None = None) -> Dict[str, ScrapeResult]:
             )
 
     overall_success = all(result["success"] for result in pipeline_results.values())
-    logger.info("Pipeline completed | overall_success=%s", overall_success)
+    logger.info("Scraping pipeline completed | overall_success=%s", overall_success)
 
     return pipeline_results
 

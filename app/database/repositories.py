@@ -24,6 +24,7 @@ from app.database.models import (
     OpenAIArticle,
     ProcessingStatus,
     TranscriptStatus,
+    UserProfile,
     YouTubeVideo,
 )
 
@@ -934,6 +935,9 @@ class DigestRepository(BaseRepository[Digest]):
         """
         Add content (videos/articles) to a digest.
         
+        Only adds content that is not already associated with the digest
+        to avoid duplicate key violations.
+        
         Args:
             digest_id: Digest ID to add content to
             videos: Optional list of YouTube videos to add
@@ -950,12 +954,66 @@ class DigestRepository(BaseRepository[Digest]):
         if not digest:
             return None
 
+        # Get existing IDs to avoid duplicates
+        existing_video_ids = {v.id for v in digest.youtube_videos}
+        existing_openai_ids = {a.id for a in digest.openai_articles}
+        existing_anthropic_ids = {a.id for a in digest.anthropic_articles}
+
+        # Only add videos that are not already associated
         if videos:
-            digest.youtube_videos.extend(videos)
+            new_videos = [v for v in videos if v.id not in existing_video_ids]
+            if new_videos:
+                digest.youtube_videos.extend(new_videos)
+        
+        # Only add OpenAI articles that are not already associated
         if openai_articles:
-            digest.openai_articles.extend(openai_articles)
+            new_openai = [a for a in openai_articles if a.id not in existing_openai_ids]
+            if new_openai:
+                digest.openai_articles.extend(new_openai)
+        
+        # Only add Anthropic articles that are not already associated
         if anthropic_articles:
-            digest.anthropic_articles.extend(anthropic_articles)
+            new_anthropic = [a for a in anthropic_articles if a.id not in existing_anthropic_ids]
+            if new_anthropic:
+                digest.anthropic_articles.extend(new_anthropic)
 
         return self.update(digest)
+
+
+class UserProfileRepository(BaseRepository[UserProfile]):
+    """
+    Repository for user profile operations.
+    
+    Provides methods for managing user profiles including
+    email-based lookups and preference management.
+    """
+
+    def __init__(self, session: Session) -> None:
+        """Initialize user profile repository."""
+        super().__init__(session, UserProfile)
+
+    def get_by_email(self, email: str) -> Optional[UserProfile]:
+        """
+        Get a user profile by email address.
+        
+        Args:
+            email: User email address (unique identifier)
+            
+        Returns:
+            UserProfile instance if found, None otherwise
+        """
+        return self.query().filter(UserProfile.email == email).first()
+
+    def get_subscribers(self) -> List[UserProfile]:
+        """
+        Get all user profiles that have opted in to receive daily digests.
+        
+        Returns:
+            List of UserProfile instances where receive_daily_digest = True
+        """
+        return (
+            self.query()
+            .filter(UserProfile.receive_daily_digest == True)
+            .all()
+        )
 

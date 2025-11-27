@@ -12,9 +12,10 @@ from dataclasses import dataclass
 from typing import List
 
 from app.agent.base import BaseAgent
-from app.agent.curator import CuratedItem, UserPreferences
+from app.agent.curator import CuratedItem
 from app.config import AppConfig
 from app.database.models import Digest
+from app.profiles import UserProfileSettings
 
 
 @dataclass
@@ -44,7 +45,7 @@ class EmailAgent(BaseAgent):
         self,
         digest: Digest,
         curated_items: List[CuratedItem],
-        prefs: UserPreferences | None = None,
+        prefs: UserProfileSettings | None = None,
         use_llm_subject: bool = False,
         use_llm_intro: bool = False,
         recommendations_explanation: str | None = None,
@@ -118,7 +119,7 @@ Do not include emojis.
     def _build_text_intro(
         self,
         digest: Digest,
-        prefs: UserPreferences | None,
+        prefs: UserProfileSettings | None,
         use_llm_intro: bool,
         recommendations_explanation: str | None,
     ) -> str:
@@ -145,7 +146,7 @@ Do not include emojis.
     def _generate_intro_with_llm(
         self,
         digest: Digest,
-        prefs: UserPreferences | None,
+        prefs: UserProfileSettings | None,
         recommendations_explanation: str | None,
     ) -> str:
         """Ask Gemini to craft a short personalized intro."""
@@ -156,6 +157,10 @@ Do not include emojis.
                 prefs_desc += f"- Preferred topics: {', '.join(prefs.topics)}\n"
             if prefs.providers:
                 prefs_desc += f"- Preferred providers: {', '.join(prefs.providers)}\n"
+            if prefs.formats:
+                prefs_desc += f"- Preferred formats: {', '.join(prefs.formats)}\n"
+            if prefs.expertise_level:
+                prefs_desc += f"- Expertise level: {prefs.expertise_level}\n"
 
         prompt = f"""You are writing a short introductory paragraph for a daily AI news email.
 

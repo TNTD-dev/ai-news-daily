@@ -21,11 +21,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from app.agent import (  # type: ignore  # noqa: E402
-    CuratorAgent,
-    EmailAgent,
-    UserPreferences,
-)
+from app.agent import CuratorAgent, EmailAgent  # type: ignore  # noqa: E402
 from app.config import settings  # type: ignore  # noqa: E402
 from app.database.models import (  # type: ignore  # noqa: E402
     AnthropicArticle,
@@ -33,6 +29,7 @@ from app.database.models import (  # type: ignore  # noqa: E402
     OpenAIArticle,
     YouTubeVideo,
 )
+from app.profiles import UserProfileSettings  # type: ignore  # noqa: E402
 
 
 def build_fake_digest() -> Digest:
@@ -109,16 +106,18 @@ def main() -> None:
 
     digest = build_fake_digest()
 
-    prefs = UserPreferences(
+    profile = UserProfileSettings(
+        name="Test User",
+        email="test.user@example.com",
         topics=["gemini", "gpt-4", "reasoning", "safety"],
         providers=["AI Explainer", "OpenAI", "Anthropic"],
-        max_items=5,
-        name="Test User",
+        formats=["video", "article"],
+        expertise_level="intermediate",
     )
 
     curator = CuratorAgent(settings)
-    curated_items = curator.curate_from_digest(digest, prefs)
-    explanation = curator.refine_recommendations_with_llm(curated_items, prefs)
+    curated_items = curator.curate_from_digest(digest, profile)
+    explanation = curator.refine_recommendations_with_llm(curated_items, profile)
 
     print("\n--- Curated items ---")
     for item in curated_items:
@@ -131,7 +130,7 @@ def main() -> None:
     email_content = email_agent.compose_digest_email(
         digest=digest,
         curated_items=curated_items,
-        prefs=prefs,
+        prefs=profile,
         use_llm_subject=True,
         use_llm_intro=True,
         recommendations_explanation=explanation,

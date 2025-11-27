@@ -2,48 +2,20 @@
 Curator agent for ranking and personalizing content based on user preferences.
 
 This module defines:
-- UserPreferences: lightweight preferences model
 - CuratedItem: normalized view of content items
 - CuratorAgent: logic for scoring, ranking, and optional LLM refinement
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, List
 
 from app.agent.base import BaseAgent
 from app.config import AppConfig
 from app.database.models import AnthropicArticle, Digest, OpenAIArticle, YouTubeVideo
-
-
-@dataclass
-class UserPreferences:
-    """
-    Generic user preferences for content curation.
-
-    Attributes:
-        topics: List of preferred topics/keywords (lowercased for matching).
-        providers: Preferred providers (e.g., YouTube channel names, domains).
-        max_items: Maximum number of recommended items to return.
-        boost_recency: Weight for recency in scoring (0-1 range, heuristic).
-        boost_matching_topics: Weight for topic matches.
-        name: Optional user name for personalization in explanations/emails.
-    """
-
-    topics: List[str] = field(default_factory=list)
-    providers: List[str] = field(default_factory=list)
-    max_items: int = 10
-    boost_recency: float = 0.3
-    boost_matching_topics: float = 1.0
-    name: str | None = None
-
-    def normalized_topics(self) -> List[str]:
-        return [t.lower() for t in self.topics if t.strip()]
-
-    def normalized_providers(self) -> List[str]:
-        return [p.lower() for p in self.providers if p.strip()]
+from app.profiles import UserProfileSettings
 
 
 @dataclass
@@ -88,7 +60,7 @@ class CuratorAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def curate_from_digest(
-        self, digest: Digest, prefs: UserPreferences
+        self, digest: Digest, profile: UserProfileSettings
     ) -> List[CuratedItem]:
         """
         Build and rank curated items from a Digest and user preferences.
@@ -114,7 +86,7 @@ class CuratorAgent(BaseAgent):
         for article in digest.anthropic_articles:
             items.append(self._from_anthropic_article(article))
 
-        ranked = self.rank_items(items, prefs)
+        ranked = self.rank_items(items, profile)
 
         self._log_info(
             "Curated items from digest",
@@ -127,14 +99,14 @@ class CuratorAgent(BaseAgent):
         return ranked
 
     def rank_items(
-        self, items: Iterable[CuratedItem], prefs: UserPreferences
+        self, items: Iterable[CuratedItem], profile: UserProfileSettings
     ) -> List[CuratedItem]:
         """
         Compute relevance scores for items and return top-N ranked list.
 
         Args:
             items: Iterable of CuratedItem to score.
-            prefs: User preferences guiding the scoring.
+            profile: User profile guiding the scoring.
 
         Returns:
             Ranked list of CuratedItem with scores populated.
@@ -142,14 +114,16 @@ class CuratorAgent(BaseAgent):
         scored: list[CuratedItem] = []
 
         for item in items:
-            item.score = self.compute_relevance_score(item, prefs)
+            item.score = self.compute_relevance_score(item, profile)
             scored.append(item)
 
         scored.sort(key=lambda i: i.score, reverse=True)
-        return scored[: max(prefs.max_items, 0) or len(scored)]
+        # For now, use a fixed max_items heuristic; can be extended to read from profile later
+        max_items = 10
+        return scored[:max_items]
 
     def compute_relevance_score(
-        self, item: CuratedItem, prefs: UserPreferences
+        self, item: CuratedItem, profile: UserProfileSettings
     ) -> float:
         """
         Compute a simple relevance score for a single item.
@@ -161,8 +135,8 @@ class CuratorAgent(BaseAgent):
         - Recency score: normalized to [0, 1] based on age (up to ~7 days)
           multiplied by boost_recency.
         """
-        topics = prefs.normalized_topics()
-        providers = prefs.normalized_providers()
+        topics = [t.lower() for t in profile.topics if t.strip()]
+        providers = [p.lower() for p in profile.providers if p.strip()]
 
         text = f"{item.title} {item.summary}".lower()
 
@@ -171,7 +145,9 @@ class CuratorAgent(BaseAgent):
         for t in topics:
             if t and t in text:
                 topic_matches += 1
-        topic_score = topic_matches * prefs.boost_matching_topics
+        # Heuristic weights; could be made configurable per profile later
+        boost_matching_topics = 1.0
+        topic_score = topic_matches * boost_matching_topics
 
         # Provider boost
         provider_score = 0.0
@@ -195,12 +171,13 @@ class CuratorAgent(BaseAgent):
                 max_hours = 24.0 * 7.0
                 recency_score = max(0.0, 1.0 - min(age_hours, max_hours) / max_hours)
 
-        total_score = topic_score + provider_score + recency_score * prefs.boost_recency
+        boost_recency = 0.3
+        total_score = topic_score + provider_score + recency_score * boost_recency
 
         return total_score
 
     def refine_recommendations_with_llm(
-        self, items: List[CuratedItem], prefs: UserPreferences
+        self, items: List[CuratedItem], profile: UserProfileSettings
     ) -> str:
         """
         Use Gemini to generate a human-readable explanation of recommendations.
@@ -217,12 +194,16 @@ class CuratorAgent(BaseAgent):
             )
 
         prefs_desc = ""
-        if prefs.topics:
-            prefs_desc += f"- Preferred topics: {', '.join(prefs.topics)}\n"
-        if prefs.providers:
-            prefs_desc += f"- Preferred providers: {', '.join(prefs.providers)}\n"
+        if profile.topics:
+            prefs_desc += f"- Preferred topics: {', '.join(profile.topics)}\n"
+        if profile.providers:
+            prefs_desc += f"- Preferred providers: {', '.join(profile.providers)}\n"
+        if profile.formats:
+            prefs_desc += f"- Preferred formats: {', '.join(profile.formats)}\n"
+        if profile.expertise_level:
+            prefs_desc += f"- Expertise level: {profile.expertise_level}\n"
 
-        user_name = prefs.name or "there"
+        user_name = profile.name or "there"
 
         prompt = f"""You are an AI assistant helping to explain a set of recommended AI news items to a user.
 
