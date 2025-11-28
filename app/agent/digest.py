@@ -36,7 +36,7 @@ class DigestAgent(BaseAgent):
 
     # Approximate token limits (conservative estimates)
     # GPT-4 has ~8k context window, we'll use ~6k for input to leave room for output
-    MAX_INPUT_TOKENS = 6000
+    MAX_INPUT_TOKENS = 500000
     # Rough estimate: 1 token ≈ 4 characters
     CHARS_PER_TOKEN = 4
     MAX_INPUT_CHARS = MAX_INPUT_TOKENS * CHARS_PER_TOKEN
@@ -91,7 +91,9 @@ class DigestAgent(BaseAgent):
                 metadata_str = "\n".join(parts) + "\n\n"
 
         # Create prompt for summarization
-        prompt = f"""You are an expert content summarizer. Summarize the following {content_type} content.
+        prompt = f"""You are an expert AI news analyst specializing in summarizing technical articles, research papers, and video content about artificial intelligence. 
+        Your role is to create concise, informative digests that help readers quickly understand the key points and significance of AI-related content.
+        Summarize the following {content_type} content in a way that is easy to understand and engaging.
 
 {metadata_str}Content:
 {content}

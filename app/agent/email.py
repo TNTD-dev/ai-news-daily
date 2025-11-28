@@ -13,6 +13,18 @@ from typing import List
 
 from app.agent.base import BaseAgent
 from app.agent.curator import CuratedItem
+from app.agent.email_template_utils import (
+    BRAND_NAME,
+    COLORS,
+    FONT_STACK,
+    build_curated_items_html,
+    build_curated_items_text,
+    build_footer_html,
+    build_recommendations_html,
+    format_digest_date,
+    sanitize_plain_text,
+    summarize_content,
+)
 from app.config import AppConfig
 from app.database.models import Digest
 from app.profiles import UserProfileSettings
@@ -62,16 +74,27 @@ class EmailAgent(BaseAgent):
             recommendations_explanation: Optional human-readable explanation
                 of recommendations (e.g., from CuratorAgent.refine_recommendations_with_llm).
         """
-        base_subject = f"Your AI Daily Digest – {digest.digest_date:%Y-%m-%d}"
-        subject = (
-            self._generate_subject_with_llm(digest, curated_items, base_subject)
-            if use_llm_subject
-            else base_subject
-        )
+        base_subject = f"Daily AI News Digest - {digest.digest_date:%m/%d/%Y}"
+        subject = base_subject
 
-        text_intro = self._build_text_intro(digest, prefs, use_llm_intro, recommendations_explanation)
-        text_body = self._build_text_body(digest, curated_items, text_intro)
-        html_body = self._build_html_body(digest, curated_items, text_intro)
+        text_intro = self._build_text_intro(
+            digest,
+            prefs,
+            use_llm_intro,
+            recommendations_explanation,
+        )
+        text_body = self._build_text_body(
+            digest=digest,
+            curated_items=curated_items,
+            intro=text_intro,
+            recommendations_explanation=recommendations_explanation,
+        )
+        html_body = self._build_html_body(
+            digest=digest,
+            curated_items=curated_items,
+            intro=text_intro,
+            recommendations_explanation=recommendations_explanation,
+        )
 
         return EmailContent(subject=subject, text_body=text_body, html_body=html_body)
 
@@ -125,11 +148,15 @@ Do not include emojis.
     ) -> str:
         """Build the intro paragraph for the email (plain text)."""
         name = prefs.name if prefs and prefs.name else None
-        greeting = f"Hi {name}," if name else "Hi there,"
+        greeting = ""
 
         if use_llm_intro:
             try:
-                intro = self._generate_intro_with_llm(digest, prefs, recommendations_explanation)
+                intro = self._generate_intro_with_llm(
+                    digest,
+                    prefs,
+                    recommendations_explanation,
+                )
                 return f"{greeting}\n\n{intro}"
             except Exception as e:
                 self._log_error("Failed to generate intro with LLM", exception=e)
@@ -191,31 +218,32 @@ Do not use emojis.
         digest: Digest,
         curated_items: List[CuratedItem],
         intro: str,
+        recommendations_explanation: str | None,
     ) -> str:
         """Build the plain-text body of the email."""
         lines: list[str] = []
         lines.append(intro)
         lines.append("")
-
-        # Digest main content (already markdown/text)
-        lines.append(f"# {digest.title}")
+        lines.append("=" * 60)
+        lines.append(f"{digest.title} — {digest.digest_date:%Y-%m-%d}")
+        lines.append("=" * 60)
+        lines.append(sanitize_plain_text(digest.content))
         lines.append("")
-        lines.append(digest.content)
-        lines.append("")
 
-        if curated_items:
-            lines.append("Top recommendations:")
+        if recommendations_explanation:
+            lines.append("Why these picks:")
+            lines.append(sanitize_plain_text(recommendations_explanation))
             lines.append("")
-            for item in curated_items:
-                source_label = item.source_type.capitalize()
-                provider_part = f" ({item.provider})" if item.provider else ""
-                lines.append(
-                    f"- [{source_label}]{provider_part}: {item.title}\n  {item.url}"
-                )
 
+        lines.append("Top recommendations:")
+        lines.append(build_curated_items_text(curated_items))
+        lines.append("")
+        lines.append("More ways to get the most out of AI News Daily:")
+        lines.append("- Reply to this email to adjust your preferences.")
+        lines.append("- Share an article you think we should feature.")
         lines.append("")
         lines.append("Best,")
-        lines.append("AI News Daily")
+        lines.append(BRAND_NAME)
 
         return "\n".join(lines)
 
@@ -224,41 +252,65 @@ Do not use emojis.
         digest: Digest,
         curated_items: List[CuratedItem],
         intro: str,
+        recommendations_explanation: str | None,
     ) -> str:
-        """Build a simple HTML body suitable for most email clients."""
-        # Basic escaping for intro (very simple; digest content assumed safe markdown/html)
+        """Build a modern HTML body suitable for most email clients."""
         intro_html = "<br>".join(intro.splitlines())
+        formatted_date = format_digest_date(digest.digest_date)
+        hero_summary = summarize_content(digest.content, max_chars=360)
+        curated_html = build_curated_items_html(curated_items)
+        recommendations_html = build_recommendations_html(recommendations_explanation)
 
-        # Build curated items HTML list
-        curated_html = ""
-        if curated_items:
-            curated_html_lines: list[str] = []
-            curated_html_lines.append("<h2>Top recommendations</h2>")
-            curated_html_lines.append("<ul>")
-            for item in curated_items:
-                source_label = item.source_type.capitalize()
-                provider_part = f" ({item.provider})" if item.provider else ""
-                curated_html_lines.append(
-                    f'<li><strong>{source_label}{provider_part}:</strong> '
-                    f'<a href="{item.url}">{item.title}</a></li>'
-                )
-            curated_html_lines.append("</ul>")
-            curated_html = "\n".join(curated_html_lines)
-
-        html = f"""<html>
-  <body>
-    <p>{intro_html}</p>
-
-    <h1>{digest.title}</h1>
-    <div>
-      {digest.content}
-    </div>
-
-    {curated_html}
-
-    <p>Best,<br>AI News Daily</p>
+        html = f"""\
+<html>
+  <body style="margin:0;padding:0;background-color:{COLORS['background']};">
+    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:{COLORS['background']};padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table width="620" cellpadding="0" cellspacing="0" role="presentation" style="background:{COLORS['card_background']};border-radius:18px;box-shadow:0 12px 35px rgba(15,23,42,0.08);overflow:hidden;">
+            <tr>
+              <td style="background:{COLORS['primary']};padding:28px 32px;font-family:{FONT_STACK};color:#ffffff;">
+                <div style="font-size:13px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.8;">{BRAND_NAME}</div>
+                <div style="font-size:26px;font-weight:600;margin-top:6px;">Daily Digest</div>
+                <div style="font-size:14px;opacity:0.85;margin-top:4px;">{formatted_date}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px 32px;font-family:{FONT_STACK};color:{COLORS['text']};">
+                <p style="font-size:15px;line-height:1.65;margin:0 0 20px 0;color:{COLORS['text']};">{intro_html}</p>
+                <div style="background:{COLORS['background']};border:1px solid {COLORS['border']};border-radius:14px;padding:20px 24px;">
+                  <h2 style="margin:0 0 8px 0;font-size:19px;color:{COLORS['text']};">{digest.title}</h2>
+                  <p style="margin:0;font-size:15px;line-height:1.7;color:{COLORS['muted_text']};">{hero_summary}</p>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 10px 32px;font-family:{FONT_STACK};">
+                <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                  <tr>
+                    <td>
+                      <div style="font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:{COLORS['accent']};margin-bottom:6px;">Top recommendations</div>
+                      <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                        {curated_html}
+                      </table>
+                    </td>
+                  </tr>
+                  {recommendations_html}
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 32px 32px 32px;">
+                {build_footer_html()}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   </body>
-</html>"""
+</html>
+"""
 
         return html
 

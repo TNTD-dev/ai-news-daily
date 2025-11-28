@@ -70,6 +70,7 @@ class EmailService:
         user_profile: Optional[UserProfileSettings] = None,
         use_llm_subject: bool = False,
         use_llm_intro: bool = False,
+        email_content_override: EmailContent | None = None,
     ) -> bool:
         """
         Send a digest email to the specified user.
@@ -108,18 +109,26 @@ class EmailService:
                 )
                 return False
             
-            # Compose email content using EmailAgent
-            self.logger.info(
-                f"Composing email content: digest_id={digest.id}, "
-                f"digest_date={digest.digest_date}, recipient={user_email}"
-            )
-            
-            email_content = self.email_agent.compose_digest_email(
-                digest=digest,
-                curated_items=curated_items,
-                prefs=user_profile,
-                use_llm_subject=use_llm_subject,
-                use_llm_intro=use_llm_intro,
+            # Compose email content using EmailAgent (or reuse provided override)
+            if email_content_override is None:
+                self.logger.info(
+                    f"Composing email content: digest_id={digest.id}, "
+                    f"digest_date={digest.digest_date}, recipient={user_email}"
+                )
+                email_content = self.email_agent.compose_digest_email(
+                    digest=digest,
+                    curated_items=curated_items,
+                    prefs=user_profile,
+                    use_llm_subject=use_llm_subject,
+                    use_llm_intro=use_llm_intro,
+                )
+            else:
+                email_content = email_content_override
+            text_snippet = email_content.text_body.replace("\n", " ")[:160]
+            self.logger.debug(
+                "Email preview | subject=%s | snippet=%s",
+                email_content.subject,
+                text_snippet,
             )
             
             # Create email message

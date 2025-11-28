@@ -5,7 +5,7 @@ Chạy script này một lần để tạo tất cả các bảng trong database
 bao gồm cả bảng user_profiles.
 
 Usage:
-    python create_tables.py
+    python -m app.database.create_tables
 """
 
 from app.database.models import (

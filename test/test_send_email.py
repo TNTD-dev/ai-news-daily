@@ -24,6 +24,7 @@ import argparse
 import logging
 import sys
 from datetime import date
+from pathlib import Path
 
 from app.agent.curator import CuratorAgent
 from app.agent.email import EmailAgent
@@ -46,6 +47,7 @@ def send_test_email(
     target_date: date | None = None,
     use_profile: bool = False,
     mark_sent: bool = True,
+    preview_html_path: Path | None = None,
 ) -> bool:
     """
     Gửi email test với digest đã tạo.
@@ -114,6 +116,23 @@ def send_test_email(
         logger.info("Đang curate content từ digest...")
         curated_items = curator_agent.curate_from_digest(digest, user_profile)
         logger.info(f"Đã curate {len(curated_items)} items")
+
+        # Build email preview (reused later)
+        email_preview = email_agent.compose_digest_email(
+            digest=digest,
+            curated_items=curated_items,
+            prefs=user_profile,
+            use_llm_subject=True,
+            use_llm_intro=True,
+        )
+
+        if preview_html_path:
+            try:
+                preview_html_path.parent.mkdir(parents=True, exist_ok=True)
+                preview_html_path.write_text(email_preview.html_body, encoding="utf-8")
+                logger.info(f"Đã lưu HTML preview tại {preview_html_path}")
+            except Exception as exc:
+                logger.error(f"Không thể lưu HTML preview: {exc}")
         
         # Store original email_sent status for rollback if needed
         original_email_sent = digest.email_sent
@@ -128,6 +147,7 @@ def send_test_email(
             user_profile=user_profile,
             use_llm_subject=True,
             use_llm_intro=True,
+            email_content_override=email_preview,
         )
         
         if success:
@@ -185,6 +205,13 @@ def main():
         action="store_true",
         help="Không đánh dấu digest là đã gửi (chỉ test)",
     )
+
+    parser.add_argument(
+        "--preview-html",
+        type=str,
+        default=None,
+        help="Lưu bản HTML preview đến đường dẫn chỉ định",
+    )
     
     args = parser.parse_args()
     
@@ -198,11 +225,14 @@ def main():
             sys.exit(1)
     
     # Send email
+    preview_path = Path(args.preview_html) if args.preview_html else None
+
     success = send_test_email(
         recipient_email=args.email,
         target_date=target_date,
         use_profile=args.use_profile,
         mark_sent=not args.no_mark_sent,
+        preview_html_path=preview_path,
     )
     
     # Exit with appropriate code
