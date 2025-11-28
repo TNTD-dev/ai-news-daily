@@ -9,6 +9,9 @@ in the `user_profiles` database table.
 import json
 import re
 from typing import List
+import threading
+import time
+from datetime import datetime
 
 import streamlit as st
 from sqlalchemy.orm import Session
@@ -21,7 +24,54 @@ from app.profiles.user_profile import (
     save_user_profile,
 )
 
-
+def run_daily_digest_job():
+    """
+    Background thread to run daily digest at a specified time.
+    
+    This function runs in a daemon thread and checks every hour if it's time
+    to run the daily digest pipeline. The default time is 7 AM UTC.
+    
+    Note: This is a simple scheduler. For production, consider using a proper
+    task scheduler like APScheduler or Railway's cron jobs.
+    """
+    import logging
+    
+    logger = logging.getLogger(__name__)
+    last_run_date = None
+    
+    while True:
+        try:
+            current_time = datetime.now()
+            current_hour = current_time.hour
+            current_date = current_time.date()
+            
+            # Run around 7 AM UTC (adjust to your needs)
+            # Only run once per day
+            if current_hour == 7 and current_date != last_run_date:
+                logger.info(f"Starting daily digest job at {current_time}")
+                print(f"[Scheduler] Running daily digest at {current_time}")
+                
+                try:
+                    from app.daily_runner import DailyPipelineRunner
+                    runner = DailyPipelineRunner()
+                    result = runner.run_complete_pipeline()
+                    
+                    last_run_date = current_date
+                    logger.info(f"Daily digest job completed: {result}")
+                    print(f"[Scheduler] Daily job completed: {result}")
+                    
+                except Exception as e:
+                    logger.error(f"Error running daily digest: {e}", exc_info=True)
+                    print(f"[Scheduler] Error running daily digest: {e}")
+            
+            # Sleep for an hour before checking again
+            time.sleep(3600)
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in scheduler: {e}", exc_info=True)
+            print(f"[Scheduler] Unexpected error: {e}")
+            # Sleep before retrying to avoid tight error loop
+            time.sleep(3600)
 # Page configuration
 st.set_page_config(
     page_title="AI News Daily – Personalized AI Digest",
@@ -134,22 +184,64 @@ st.markdown(
 
 
 def init_database_tables() -> None:
-    """Initialize database tables if they don't exist."""
+    """
+    Initialize all database tables if they don't exist.
+    
+    This function imports all models to ensure their metadata is registered,
+    then creates all tables (including association tables) in the database.
+    Tables that already exist will be skipped automatically by SQLAlchemy.
+    
+    Tables created:
+    - youtube_videos
+    - openai_articles
+    - anthropic_articles
+    - digests
+    - user_profiles
+    - digest_youtube_videos (association table)
+    - digest_openai_articles (association table)
+    - digest_anthropic_articles (association table)
+    """
     try:
         engine = init_engine()
-        # Import all models to register metadata (mirrors streamlit_app.py)
+        
+        # Import all models to register their metadata with Base
+        # This ensures all tables (including association tables) are included
+        # Association tables are automatically registered when models are imported
         from app.database.models import (
             AnthropicArticle,
             Digest,
             OpenAIArticle,
+            UserProfile,
             YouTubeVideo,
         )
-
-        _ = (AnthropicArticle, Digest, OpenAIArticle, YouTubeVideo, UserProfile)
-        Base.metadata.create_all(engine)
+        
+        # Ensure all models are imported (this registers them with Base.metadata)
+        # Association tables (digest_youtube_videos, digest_openai_articles, 
+        # digest_anthropic_articles) are automatically included when models are imported
+        _ = (AnthropicArticle, Digest, OpenAIArticle, UserProfile, YouTubeVideo)
+        
+        # Create all tables (this is idempotent - existing tables are skipped)
+        # checkfirst=True ensures SQLAlchemy checks if tables exist before creating
+        Base.metadata.create_all(engine, checkfirst=True)
+        
+        # Log success (only in non-Streamlit contexts to avoid errors)
+        try:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Database tables initialized successfully")
+        except Exception:
+            pass  # Ignore logging errors in Streamlit context
+            
     except Exception as e:
-        if "already exists" not in str(e).lower():
-            st.error(f"❌ Error while initializing database: {str(e)}")
+        error_msg = str(e).lower()
+        # Only show error if it's not a "table already exists" type error
+        if "already exists" not in error_msg and "duplicate" not in error_msg:
+            # Use print for Railway logs, st.error for Streamlit UI
+            print(f"❌ Error while initializing database: {str(e)}")
+            try:
+                st.error(f"❌ Error while initializing database: {str(e)}")
+            except Exception:
+                pass  # If Streamlit context is not available, just print
 
 
 def get_db_session():
@@ -487,7 +579,15 @@ def _render_post_submit_summary(user: UserProfile) -> None:
 
 def main() -> None:
     """Main entry for the user onboarding app."""
+    # Initialize database tables first (idempotent - safe to call multiple times)
     init_database_tables()
+    
+    # Start the daily digest scheduler in a background thread
+    # This runs the daily pipeline at the specified time (7 AM UTC by default)
+    scheduler_thread = threading.Thread(target=run_daily_digest_job, daemon=True)
+    scheduler_thread.start()
+    
+    # Render the Streamlit UI
     render_hero_section()
     render_features_section()
     render_user_form()
