@@ -2,19 +2,17 @@
 OpenAI blog scraper for collecting article content and metadata.
 
 This module implements scraping of OpenAI blog articles from RSS feeds,
-extracting full content, converting HTML to markdown using docling,
-and storing articles using OpenAIArticleRepository.
+extracting full content, converting HTML to markdown using a lightweight
+HTML-to-Markdown library, and storing articles using OpenAIArticleRepository.
 """
 
-import tempfile
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import feedparser
 import requests
-from docling.document_converter import DocumentConverter
+from html_to_markdown import convert
 from sqlalchemy.orm import Session
 
 from app.config import AppConfig
@@ -48,7 +46,6 @@ class OpenAIScraper(BaseScraper):
         """
         super().__init__(session, config)
         self.repository = OpenAIArticleRepository(session)
-        self.converter = DocumentConverter()
         self.session_requests = requests.Session()
         self.session_requests.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -175,54 +172,24 @@ class OpenAIScraper(BaseScraper):
 
     def _html_to_markdown(self, html_content: str) -> str | None:
         """
-        Convert HTML content to markdown using docling.
-        
+        Convert HTML content to markdown using a lightweight HTML-to-Markdown library.
+
         Args:
             html_content: HTML content as string
-            
+
         Returns:
             Markdown content as string, or None if conversion fails
         """
-        # docling's DocumentConverter.convert() expects a file path or URL,
-        # not a string. We need to write HTML to a temporary file first.
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as tmp_file:
-            try:
-                tmp_file.write(html_content)
-                tmp_file_path = tmp_file.name
-                tmp_file.close()  # Close file so docling can read it
-                
-                # Convert using temporary file path
-                result = self.converter.convert(tmp_file_path)
-                
-                # Extract markdown from the result
-                # The result is typically a Document object with markdown property
-                if hasattr(result, "document"):
-                    doc = result.document
-                else:
-                    doc = result
-                
-                # Try to get markdown content
-                if hasattr(doc, "export_to_markdown"):
-                    markdown = doc.export_to_markdown()
-                elif hasattr(doc, "markdown"):
-                    markdown = doc.markdown
-                elif hasattr(result, "export_to_markdown"):
-                    markdown = result.export_to_markdown()
-                else:
-                    # Fallback: try to get text content
-                    self._log_error("Could not extract markdown from docling result")
-                    markdown = None
-                
-                return markdown
-            except Exception as e:
-                self._log_error(f"Failed to convert HTML to markdown", exception=e)
+        try:
+            markdown = convert(html_content)
+            if not markdown:
+                # Normalize falsy values (empty string) to None so callers can
+                # treat conversion failure consistently.
                 return None
-            finally:
-                # Clean up temporary file
-                try:
-                    Path(tmp_file_path).unlink(missing_ok=True)
-                except Exception:
-                    pass
+            return markdown
+        except Exception as e:
+            self._log_error("Failed to convert HTML to markdown", exception=e)
+            return None
 
     def _process_article_entry(
         self, entry: feedparser.FeedParserDict
