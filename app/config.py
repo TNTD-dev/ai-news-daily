@@ -122,6 +122,11 @@ class EmailConfig(BaseSettings):
     password: str = Field(..., alias="SMTP_PASSWORD", description="SMTP password")
     from_email: EmailStr = Field(..., alias="FROM_EMAIL", description="Sender email address")
     to_email: EmailStr = Field(..., alias="TO_EMAIL", description="Recipient email address")
+    resend_api_key: str | None = Field(
+        default=None,
+        alias="RESEND_API_KEY",
+        description="Resend API key (optional; if set, email will be sent via Resend API instead of SMTP)",
+    )
 
     @field_validator("port")
     @classmethod

@@ -1,5 +1,5 @@
 """
-Email delivery service for sending digest emails via SMTP.
+Email delivery service for sending digest emails via SMTP or Resend.
 
 This service handles:
 - SMTP connection and authentication
@@ -7,6 +7,7 @@ This service handles:
 - Integration with EmailAgent for content generation
 - Database tracking of email delivery status
 - Comprehensive error handling for delivery failures
+- Optional delivery via Resend HTTP API when RESEND_API_KEY is configured
 """
 
 import logging
@@ -15,6 +16,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Optional
 
+import resend
 from sqlalchemy.orm import Session
 
 from app.agent.curator import CuratedItem
@@ -78,7 +80,7 @@ class EmailService:
         This method:
         1. Loads user profile if not provided
         2. Composes email content using EmailAgent
-        3. Sends email via SMTP
+        3. Sends email via Resend (if configured) or SMTP
         4. Updates digest record to mark as sent on success
         
         Args:
@@ -131,24 +133,41 @@ class EmailService:
                 text_snippet,
             )
             
-            # Create email message
-            message = self._create_email_message(
-                subject=email_content.subject,
-                text_body=email_content.text_body,
-                html_body=email_content.html_body,
-                from_email=self.email_config.from_email,
-                to_email=user_email,
-            )
-            
-            # Send email via SMTP
-            self.logger.info(
-                f"Sending email via SMTP: from_email={self.email_config.from_email}, "
-                f"to_email={user_email}, smtp_host={self.email_config.host}, "
-                f"smtp_port={self.email_config.port}"
-            )
-            
-            if not self._send_via_smtp(message):
-                return False
+            # Decide delivery channel: Resend API (if configured) or SMTP fallback
+            if self.email_config.resend_api_key:
+                self.logger.info(
+                    "Sending email via Resend: from_email=%s, to_email=%s",
+                    self.email_config.from_email,
+                    user_email,
+                )
+                if not self._send_via_resend(
+                    subject=email_content.subject,
+                    text_body=email_content.text_body,
+                    html_body=email_content.html_body,
+                    from_email=self.email_config.from_email,
+                    to_email=user_email,
+                ):
+                    return False
+            else:
+                # Legacy SMTP path (used when RESEND_API_KEY is not provided)
+                message = self._create_email_message(
+                    subject=email_content.subject,
+                    text_body=email_content.text_body,
+                    html_body=email_content.html_body,
+                    from_email=self.email_config.from_email,
+                    to_email=user_email,
+                )
+
+                self.logger.info(
+                    "Sending email via SMTP: from_email=%s, to_email=%s, smtp_host=%s, smtp_port=%s",
+                    self.email_config.from_email,
+                    user_email,
+                    self.email_config.host,
+                    self.email_config.port,
+                )
+
+                if not self._send_via_smtp(message):
+                    return False
             
             # Mark digest as sent in database
             updated_digest = self.digest_repo.mark_email_sent(digest.id)
@@ -295,6 +314,73 @@ class EmailService:
                 f"Unexpected error sending email via SMTP: host={self.email_config.host}, "
                 f"port={self.email_config.port}, error={e}",
                 exc_info=True
+            )
+            return False
+
+    def _send_via_resend(
+        self,
+        subject: str,
+        text_body: str,
+        html_body: str,
+        from_email: str,
+        to_email: str,
+    ) -> bool:
+        """
+        Send email using the Resend API.
+
+        This method is used when RESEND_API_KEY is configured in EmailConfig.
+        It mirrors the behavior of _send_via_smtp in terms of logging and
+        error handling so that callers can treat both channels identically.
+        """
+        if not self.email_config.resend_api_key:
+            self.logger.error(
+                "Resend API key is not configured but _send_via_resend was called"
+            )
+            return False
+
+        try:
+            # Configure Resend client
+            resend.api_key = self.email_config.resend_api_key
+
+            params = {
+                "from": from_email,
+                "to": [to_email],
+                "subject": subject,
+                # Resend supports both html and text; provide both for better clients
+                "html": html_body,
+                "text": text_body,
+            }
+
+            self.logger.debug(
+                "Calling Resend API to send email: from_email=%s, to_email=%s",
+                from_email,
+                to_email,
+            )
+
+            response = resend.Emails.send(params)  # type: ignore[attr-defined]
+
+            message_id = None
+            # Resend may return dict-like or object; try to log an identifier if present
+            if isinstance(response, dict):
+                message_id = response.get("id")
+            elif hasattr(response, "id"):
+                message_id = getattr(response, "id")
+
+            self.logger.info(
+                "Email sent successfully via Resend: from_email=%s, to_email=%s, message_id=%s",
+                from_email,
+                to_email,
+                message_id,
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(
+                "Unexpected error sending email via Resend: from_email=%s, to_email=%s, error=%s",
+                from_email,
+                to_email,
+                e,
+                exc_info=True,
             )
             return False
 
