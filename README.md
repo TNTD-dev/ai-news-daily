@@ -11,14 +11,8 @@
 
 Watch the demo video to see AI News Daily in action:
 
+![Demo](static/demo_ai-news-daily.gif)
 
-<details>
-<summary>Click to view video inline</summary>
-
-<video width="100%" controls>
-  <source src="static/demo_ai-news-daily.mp4" type="video/mp4">
-  Your browser does not support the video tag. <a href="static/demo_ai-news-daily.mp4">Download the video</a> instead.
-</video>
 
 </details>
 
