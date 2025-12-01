@@ -8,16 +8,16 @@ Script này sẽ:
 
 Usage:
     # Gửi email test với digest hôm nay
-    python test_send_email.py test@example.com
+    python -m test.test_send_email test@example.com
     
     # Gửi email test với digest của ngày cụ thể
-    python test_send_email.py test@example.com --date 2024-11-27
+    python -m test.test_send_email test@example.com --date 2024-11-27
     
     # Sử dụng user profile từ database
-    python test_send_email.py test@example.com --use-profile
+    python -m test.test_send_email test@example.com --use-profile
     
     # Không cập nhật email_sent status (chỉ test, không đánh dấu đã gửi)
-    python test_send_email.py test@example.com --no-mark-sent
+    python -m test.test_send_email test@example.com --no-mark-sent
 """
 
 import argparse

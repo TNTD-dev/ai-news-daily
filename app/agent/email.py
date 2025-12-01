@@ -22,6 +22,9 @@ from app.agent.email_template_utils import (
     build_footer_html,
     build_recommendations_html,
     format_digest_date,
+    format_markdown_text,
+    markdown_to_html_email,
+    parse_digest_header,
     sanitize_plain_text,
     summarize_content,
 )
@@ -225,9 +228,28 @@ Do not use emojis.
         lines.append(intro)
         lines.append("")
         lines.append("=" * 60)
-        lines.append(f"{digest.title} — {digest.digest_date:%Y-%m-%d}")
+        
+        # Parse digest content to extract title and intro
+        digest_title, digest_intro, remaining_content = parse_digest_header(digest.content)
+        
+        # Use parsed title, fallback to digest.title if not found
+        hero_title = digest_title if digest_title else digest.title
+        lines.append(f"{hero_title} — {digest.digest_date:%Y-%m-%d}")
         lines.append("=" * 60)
-        lines.append(sanitize_plain_text(digest.content))
+        lines.append("")
+        
+        # Add intro if found
+        if digest_intro:
+            lines.append(sanitize_plain_text(digest_intro))
+            lines.append("")
+        
+        # Add remaining digest content formatted nicely (skip title and intro)
+        if remaining_content:
+            digest_text = format_markdown_text(remaining_content)
+            if digest_text:
+                lines.append(digest_text)
+                lines.append("")
+        lines.append("=" * 60)
         lines.append("")
 
         if recommendations_explanation:
@@ -257,9 +279,19 @@ Do not use emojis.
         """Build a modern HTML body suitable for most email clients."""
         intro_html = "<br>".join(intro.splitlines())
         formatted_date = format_digest_date(digest.digest_date)
-        hero_summary = summarize_content(digest.content, max_chars=360)
+        
+        # Parse digest content to extract title and intro
+        digest_title, digest_intro, remaining_content = parse_digest_header(digest.content)
+        
+        # Use parsed title and intro, fallback to digest.title and summary if not found
+        hero_title = digest_title if digest_title else digest.title
+        hero_summary = digest_intro if digest_intro else summarize_content(digest.content, max_chars=360)
+        
         curated_html = build_curated_items_html(curated_items)
         recommendations_html = build_recommendations_html(recommendations_explanation)
+        
+        # Convert remaining digest content from markdown to HTML (skip title and intro)
+        digest_html = markdown_to_html_email(remaining_content) if remaining_content else ""
 
         html = f"""\
 <html>
@@ -279,8 +311,15 @@ Do not use emojis.
               <td style="padding:28px 32px;font-family:{FONT_STACK};color:{COLORS['text']};">
                 <p style="font-size:15px;line-height:1.65;margin:0 0 20px 0;color:{COLORS['text']};">{intro_html}</p>
                 <div style="background:{COLORS['background']};border:1px solid {COLORS['border']};border-radius:14px;padding:20px 24px;">
-                  <h2 style="margin:0 0 8px 0;font-size:19px;color:{COLORS['text']};">{digest.title}</h2>
+                  <h2 style="margin:0 0 8px 0;font-size:19px;color:{COLORS['text']};">{hero_title}</h2>
                   <p style="margin:0;font-size:15px;line-height:1.7;color:{COLORS['muted_text']};">{hero_summary}</p>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 32px 28px 32px;font-family:{FONT_STACK};">
+                <div style="background:{COLORS['card_background']};border:1px solid {COLORS['border']};border-radius:14px;padding:24px 28px;">
+                  {digest_html}
                 </div>
               </td>
             </tr>

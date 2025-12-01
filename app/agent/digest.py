@@ -418,7 +418,13 @@ Please create a comprehensive daily digest with:
 - Clear summaries of each item
 - A brief conclusion
 
-Format the digest in markdown with proper headings, links, and structure."""
+IMPORTANT FORMATTING REQUIREMENTS:
+- Use numbered list format for all items within each section: **1. Item Title**
+- Each numbered item should include:
+  * **Source:** [link text](url) on a bullet point
+  * **Summary:** followed by the summary text on a bullet point
+- Use markdown with proper headings (### for section headers), links, and structure.
+- Do NOT use unnumbered bullet points (* or -) for items - always use numbered format (1., 2., 3., etc.)"""
 
         try:
             messages = [
